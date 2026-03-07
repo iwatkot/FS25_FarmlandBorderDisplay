@@ -23,7 +23,13 @@ FarmlandBorderDisplay = {}
 local FBD = FarmlandBorderDisplay
 
 FBD.isEnabled   = true   -- master on/off switch
-FBD.alwaysShow  = false  -- if true, render outside build mode as well
+-- Runtime settings (persisted to XML, editable in InGameMenu)
+FBD.showInBuildMenu = true   -- show when ConstructionScreen / ShopMenu is open
+FBD.showInGame      = false  -- show during normal gameplay
+FBD.showOnlyOwned   = false  -- when true, hide unowned and foreign farmlands
+
+FBD.CONTROLS     = {}    -- UI element references for the settings menu
+FBD.menuInjected = false -- guard: inject the settings UI only once
 
 -- cached list: { [farmlandId] = { farmland=<Farmland>, segs={{wx1,wy1,wz1, wx2,wy2,wz2}, ...} } }
 FBD.cache       = {}
@@ -61,6 +67,7 @@ function FBD:loadMap(_filename)
         local proxy = {}
         proxy.getShouldBeDrawn = function()
             if not FBD.isEnabled then return false end
+            if not FBD.showInBuildMenu then return false end
             if g_gui == nil or not g_gui:getIsGuiVisible() then return false end
             local name = g_gui.currentGuiName
             return name == "ConstructionScreen"
@@ -72,6 +79,9 @@ function FBD:loadMap(_filename)
         end
         g_debugManager:addElement(proxy, MODNAME)
     end
+
+    FBD.readSettings()
+    FBD.injectMenu()
 end
 
 --- Called when the map is unloaded (back to main menu / mission end).
@@ -86,16 +96,17 @@ function FBD:deleteMap()
     if g_debugManager ~= nil then
         g_debugManager:removeGroup(MODNAME)
     end
+
+    FBD.writeSettings()
 end
 
 --- Called every render frame during normal gameplay (not during full-screen GUIs).
 --- The DebugManager proxy registered in loadMap handles ConstructionScreen / ShopMenu.
 function FBD:draw()
     if not self.isEnabled then return end
-    -- When a full-screen GUI is open the proxy handles rendering; skip here to
-    -- avoid double-drawing on the one frame where both paths might overlap.
+    if not FBD.showInGame then return end
+    -- When a full-screen GUI is open the proxy handles rendering; skip to avoid double-drawing.
     if g_gui ~= nil and g_gui:getIsGuiVisible() then return end
-    if not self:_isPlacementActive() then return end
     if g_currentMission == nil then return end
 
     -- Grab terrain node lazily (it may not be set on the very first frame)
@@ -120,15 +131,19 @@ function FBD:_renderBorders()
         self:_buildCache()
     end
 
-    local localFarmId = g_currentMission:getFarmId()
+    local localFarmId  = g_currentMission:getFarmId()
+    local mapping       = g_farmlandManager ~= nil and g_farmlandManager.farmlandMapping
+    local showOnlyOwned = FBD.showOnlyOwned
 
-    for _, entry in pairs(self.cache) do
+    for id, entry in pairs(self.cache) do
         if entry.farmland ~= nil then
-            local color = self:_pickColor(entry.farmland, localFarmId)
-            local r, g, b = color[1], color[2], color[3]
-            for _, seg in ipairs(entry.segs) do
-                -- FS25 signature: x0,y0,z0, r0,g0,b0, x1,y1,z1, r1,g1,b1 [,solid]
-                drawDebugLine(seg[1], seg[2], seg[3], r, g, b, seg[4], seg[5], seg[6], r, g, b)
+            local fid = (mapping and mapping[id]) or 0
+            if not showOnlyOwned or fid == localFarmId then
+                local color = self:_pickColor(fid, localFarmId)
+                local r, g, b = color[1], color[2], color[3]
+                for _, seg in ipairs(entry.segs) do
+                    drawDebugLine(seg[1], seg[2], seg[3], r, g, b, seg[4], seg[5], seg[6], r, g, b)
+                end
             end
         end
     end
@@ -144,24 +159,9 @@ function FBD:cmdToggle()
 end
 
 function FBD:cmdAlways()
-    self.alwaysShow = not self.alwaysShow
-    print(string.format("[%s] Always-show mode %s.", MODNAME, self.alwaysShow and "ON" or "OFF"))
-end
-
--- =============================================================================
--- Build mode / placement detection
--- =============================================================================
-
---- Returns true when the player is in the shop or construction/placement screen.
-function FBD:_isPlacementActive()
-    if self.alwaysShow then return true end
-
-    if g_gui == nil then return false end
-
-    local screenName = g_gui.currentGuiName
-    return screenName == "ShopMenu"
-        or screenName == "ShopConfigScreen"
-        or screenName == "ConstructionScreen"
+    FBD.showInGame = not FBD.showInGame
+    FBD.writeSettings()
+    print(string.format("[%s] Show-in-game %s.", MODNAME, FBD.showInGame and "ON" or "OFF"))
 end
 
 -- =============================================================================
@@ -288,23 +288,157 @@ end
 -- Color selection
 -- =============================================================================
 
---- Returns the appropriate [r,g,b] color table for a given farmland.
-function FBD:_pickColor(farmland, localFarmId)
-    local fid = farmland.farmId or 0
-
-    if fid == localFarmId then
-        -- Distinguish leased vs fully owned if the game exposes that flag
-        if farmland.isLeased == true then
-            return FBD.COLORS.LEASED
-        end
+--- Returns the appropriate [r,g,b] color for a farmland given its owner farm ID.
+--- @param fid         current owner farm ID from g_farmlandManager.farmlandMapping
+--- @param localFarmId the local player's farm ID
+function FBD:_pickColor(fid, localFarmId)
+    if fid == localFarmId and localFarmId ~= 0 then
         return FBD.COLORS.OWNED
     elseif fid ~= 0 then
-        -- Belongs to another farm (player or NPC/AI)
         return FBD.COLORS.FOREIGN
     else
-        -- Unowned / purchasable
         return FBD.COLORS.UNOWNED
     end
+end
+
+-- =============================================================================
+-- Settings persistence
+-- =============================================================================
+
+function FBD.readSettings()
+    local path = Utils.getFilename("modSettings/FarmlandBorderDisplay.xml", getUserProfileAppPath())
+    if not fileExists(path) then
+        FBD.writeSettings()
+        return
+    end
+    local xmlFile = loadXMLFile("FBD_cfg", path)
+    if xmlFile ~= 0 then
+        local b = "farmlandBorderDisplay"
+        local v = getXMLBool(xmlFile, b .. ".showInBuildMenu#v") ; if v ~= nil then FBD.showInBuildMenu = v end
+        local w = getXMLBool(xmlFile, b .. ".showInGame#v")      ; if w ~= nil then FBD.showInGame      = w end
+        local x = getXMLBool(xmlFile, b .. ".showOnlyOwned#v")   ; if x ~= nil then FBD.showOnlyOwned   = x end
+        delete(xmlFile)
+    end
+end
+
+function FBD.writeSettings()
+    local path = Utils.getFilename("modSettings/FarmlandBorderDisplay.xml", getUserProfileAppPath())
+    local xmlFile = createXMLFile("FBD_cfg", path, "farmlandBorderDisplay")
+    if xmlFile ~= 0 then
+        local b = "farmlandBorderDisplay"
+        setXMLBool(xmlFile, b .. ".showInBuildMenu#v", FBD.showInBuildMenu)
+        setXMLBool(xmlFile, b .. ".showInGame#v",      FBD.showInGame)
+        setXMLBool(xmlFile, b .. ".showOnlyOwned#v",   FBD.showOnlyOwned)
+        saveXMLFile(xmlFile)
+        delete(xmlFile)
+    end
+end
+
+-- =============================================================================
+-- InGameMenu settings injection
+-- =============================================================================
+
+-- Named callback target required by FS25's UI callback dispatch.
+FBD_Controls = {}
+
+function FBD_Controls:onOptionChanged(state, menuOption)
+    local id  = menuOption.id
+    local val = (state == 2)
+    if     id == "fbd_buildMenu"   then FBD.showInBuildMenu = val
+    elseif id == "fbd_inGame"      then FBD.showInGame      = val
+    elseif id == "fbd_onlyOwned"   then FBD.showOnlyOwned   = val
+    end
+    FBD.writeSettings()
+end
+
+function FBD.injectMenu()
+    if FBD.menuInjected then return end
+
+    local inGameMenu = g_gui ~= nil and g_gui.screenControllers[InGameMenu]
+    if inGameMenu == nil then return end
+    local page = inGameMenu.pageSettings
+    if page == nil then return end
+
+    FBD.menuInjected  = true
+    FBD_Controls.name = page.name  -- required by FS25 focus/callback system
+
+    -- Use the wood-harvester binary option as the clone template (standard FS25 element).
+    local templateBox = page.checkWoodHarvesterAutoCutBox
+    if templateBox == nil then
+        print(string.format("[%s] WARNING: settings template element not found; UI not injected.", MODNAME))
+        return
+    end
+
+    local function updateFocusIds(elem)
+        if not elem then return end
+        elem.focusId = FocusManager:serveAutoFocusId()
+        for _, child in pairs(elem.elements) do updateFocusIds(child) end
+    end
+
+    local function addBinary(id, label, tooltip, getValue)
+        local box    = templateBox:clone(page.generalSettingsLayout)
+        box.id       = id .. "_box"
+        local opt    = box.elements[1]
+        opt.id       = id
+        opt.target   = FBD_Controls
+        opt:setCallback("onClickCallback", "onOptionChanged")
+        opt:setDisabled(false)
+        opt:setTexts({ g_i18n:getText("ui_off"), g_i18n:getText("ui_on") })
+        opt:setState(getValue() and 2 or 1)
+        if opt.elements[1]  ~= nil then opt.elements[1]:setText(tooltip) end
+        if box.elements[2]  ~= nil then box.elements[2]:setText(label)   end
+        FBD.CONTROLS[id] = opt
+        updateFocusIds(box)
+        table.insert(page.controlsList, box)
+    end
+
+    -- Section header
+    local header = nil
+    for _, elem in ipairs(page.generalSettingsLayout.elements) do
+        if elem.name == "sectionHeader" then
+            header = elem:clone(page.generalSettingsLayout)
+            break
+        end
+    end
+    if header ~= nil then
+        header:setText("Farmland Border Display")
+        header.focusId = FocusManager:serveAutoFocusId()
+        table.insert(page.controlsList, header)
+        FBD.CONTROLS["fbd_header"] = header
+    end
+
+    addBinary("fbd_buildMenu", "Show in build menu",
+        "Show farmland borders in Construction / Shop screens",
+        function() return FBD.showInBuildMenu end)
+    addBinary("fbd_inGame",   "Show in game",
+        "Show farmland borders during normal gameplay",
+        function() return FBD.showInGame end)
+    addBinary("fbd_onlyOwned", "Show only owned",
+        "Hide unowned and foreign farmlands",
+        function() return FBD.showOnlyOwned end)
+
+    page.generalSettingsLayout:invalidateLayout()
+
+    -- Refresh toggle states whenever the settings page is opened.
+    InGameMenuSettingsFrame.onFrameOpen = Utils.appendedFunction(
+        InGameMenuSettingsFrame.onFrameOpen,
+        function()
+            if FBD.CONTROLS.fbd_buildMenu  ~= nil then FBD.CONTROLS.fbd_buildMenu:setState( FBD.showInBuildMenu and 2 or 1) end
+            if FBD.CONTROLS.fbd_inGame     ~= nil then FBD.CONTROLS.fbd_inGame:setState(    FBD.showInGame      and 2 or 1) end
+            if FBD.CONTROLS.fbd_onlyOwned  ~= nil then FBD.CONTROLS.fbd_onlyOwned:setState( FBD.showOnlyOwned   and 2 or 1) end
+        end)
+
+    -- Allow keyboard / controller navigation through our controls.
+    FocusManager.setGui = Utils.appendedFunction(FocusManager.setGui, function(_, gui)
+        if gui == "ingameMenuSettings" then
+            for _, ctrl in pairs(FBD.CONTROLS) do
+                if ctrl.focusId and not FocusManager.currentFocusData.idToElementMapping[ctrl.focusId] then
+                    FocusManager:loadElementFromCustomValues(ctrl, nil, nil, false, false)
+                end
+            end
+            page.generalSettingsLayout:invalidateLayout()
+        end
+    end)
 end
 
 -- =============================================================================
