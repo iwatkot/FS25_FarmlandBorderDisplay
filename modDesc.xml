@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<modDesc descVersion="104">
+    <author>fs25_farmlands_extended</author>
+    <version>1.0.0.0</version>
+
+    <title>
+        <en>Farmland Border Display</en>
+        <de>Grundstücksgrenze anzeigen</de>
+    </title>
+
+    <description>
+        <en>
+            Highlights farmland borders while you are in the building/shop placement menu.
+
+            Color legend:
+            Green = owned by you
+            Cyan = leased by you
+            Yellow = unowned (purchasable)
+            Orange = owned by another player / AI
+
+            Console commands (press ~ or open the developer console):
+            fbdToggle – enable / disable the overlay
+            fbdAlways – show borders at all times (not just in placement mode)
+        </en>
+    </description>
+
+    <multiplayer supported="false" />
+
+    <extraSourceFiles>
+        <sourceFile filename="scripts/FarmlandBorderDisplay.lua" />
+    </extraSourceFiles>
+</modDesc>
