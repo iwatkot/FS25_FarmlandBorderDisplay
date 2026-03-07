@@ -53,6 +53,25 @@ function FBD:loadMap(_filename)
     -- Register console commands so the player can toggle the mod at runtime.
     addConsoleCommand("fbdToggle", "Toggle Farmland Border Display on/off",    "cmdToggle",      FBD)
     addConsoleCommand("fbdAlways", "Show farmland borders even outside build mode", "cmdAlways", FBD)
+
+    -- Register a proxy with g_debugManager so that borders are also drawn
+    -- while the ConstructionScreen / ShopMenu is open (the normal mission
+    -- draw() callback is not invoked during those screens).
+    if g_debugManager ~= nil then
+        local proxy = {}
+        proxy.getShouldBeDrawn = function()
+            if not FBD.isEnabled then return false end
+            if g_gui == nil or not g_gui:getIsGuiVisible() then return false end
+            local name = g_gui.currentGuiName
+            return name == "ConstructionScreen"
+                or name == "ShopMenu"
+                or name == "ShopConfigScreen"
+        end
+        proxy.draw = function()
+            FBD:_renderBorders()
+        end
+        g_debugManager:addElement(proxy, MODNAME)
+    end
 end
 
 --- Called when the map is unloaded (back to main menu / mission end).
@@ -63,11 +82,19 @@ function FBD:deleteMap()
 
     removeConsoleCommand("fbdToggle")
     removeConsoleCommand("fbdAlways")
+
+    if g_debugManager ~= nil then
+        g_debugManager:removeGroup(MODNAME)
+    end
 end
 
---- Called every render frame – this is where we draw the outlines.
+--- Called every render frame during normal gameplay (not during full-screen GUIs).
+--- The DebugManager proxy registered in loadMap handles ConstructionScreen / ShopMenu.
 function FBD:draw()
     if not self.isEnabled then return end
+    -- When a full-screen GUI is open the proxy handles rendering; skip here to
+    -- avoid double-drawing on the one frame where both paths might overlap.
+    if g_gui ~= nil and g_gui:getIsGuiVisible() then return end
     if not self:_isPlacementActive() then return end
     if g_currentMission == nil then return end
 
@@ -77,7 +104,18 @@ function FBD:draw()
         if self.terrainNode == nil or self.terrainNode == 0 then return end
     end
 
-    -- Build cache on first draw so the farmland manager is fully populated
+    self:_renderBorders()
+end
+
+--- Shared rendering path used by both draw() and the DebugManager proxy.
+function FBD:_renderBorders()
+    if g_currentMission == nil then return end
+
+    if self.terrainNode == nil or self.terrainNode == 0 then
+        self.terrainNode = g_currentMission.terrainRootNode
+        if self.terrainNode == nil or self.terrainNode == 0 then return end
+    end
+
     if not self.cacheBuilt then
         self:_buildCache()
     end
@@ -114,49 +152,16 @@ end
 -- Build mode / placement detection
 -- =============================================================================
 
---- Returns true when the player is actively placing a building or has the
---- shop construction menu open.
+--- Returns true when the player is in the shop or construction/placement screen.
 function FBD:_isPlacementActive()
     if self.alwaysShow then return true end
-    if g_currentMission == nil then return false end
 
-    -- ── method 1: shop controller has a live preview node ─────────────────────
-    local shop = g_currentMission.shopController
-    if shop ~= nil then
-        -- previewNode is non-nil / non-zero while an item is being dragged
-        if shop.previewNode ~= nil and shop.previewNode ~= 0 then
-            return true
-        end
-        -- activeItemClassName is set while the player is in placement mode
-        if shop.activeItemClassName ~= nil then
-            return true
-        end
-        -- Broader flag if the shop itself is visible
-        if shop.isShopVisible == true then
-            return true
-        end
-    end
+    if g_gui == nil then return false end
 
-    -- ── method 2: FS25 isBuildMode flag ───────────────────────────────────────
-    if g_currentMission.isBuildMode == true then
-        return true
-    end
-
-    -- ── method 3: check current GUI screen name ────────────────────────────────
-    if g_gui ~= nil then
-        local gui = g_gui.currentGui
-        if gui ~= nil then
-            local name = (gui.name or ""):lower()
-            if name:find("shop")     ~= nil or
-               name:find("construct") ~= nil or
-               name:find("placement") ~= nil or
-               name:find("build")     ~= nil then
-                return true
-            end
-        end
-    end
-
-    return false
+    local screenName = g_gui.currentGuiName
+    return screenName == "ShopMenu"
+        or screenName == "ShopConfigScreen"
+        or screenName == "ConstructionScreen"
 end
 
 -- =============================================================================
