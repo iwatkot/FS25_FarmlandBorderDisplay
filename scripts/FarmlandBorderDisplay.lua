@@ -1,17 +1,13 @@
 -- =============================================================================
 -- FarmlandBorderDisplay.lua
--- Draws colored polygon outlines around every farmland while the player is in
--- the building/shop placement menu.
+-- Draws colored polygon outlines around every farmland.
 --
 -- Color legend:
 --   Green  = owned by the local player's farm
---   Cyan   = leased by the local player's farm
 --   Yellow = unowned (available for purchase)
 --   Orange = owned by another player or AI
 --
--- Console commands:
---   fbdToggle  – enable / disable the overlay
---   fbdAlways  – toggle "always on" mode (show outside build menu too)
+-- Settings are available in the in-game menu (ESC → Settings).
 -- =============================================================================
 
 local MODNAME = g_currentModName or "FarmlandBorderDisplay"
@@ -39,7 +35,6 @@ FBD.terrainNode = nil
 -- Display colours [r, g, b] (0-1 range)
 FBD.COLORS = {
     OWNED   = { 0.10, 0.95, 0.10 },  -- bright green
-    LEASED  = { 0.10, 0.80, 1.00 },  -- cyan
     UNOWNED = { 0.95, 0.95, 0.10 },  -- yellow
     FOREIGN = { 1.00, 0.50, 0.10 },  -- orange
 }
@@ -55,10 +50,6 @@ function FBD:loadMap(_filename)
     self.terrainNode = g_currentMission and g_currentMission.terrainRootNode
     self.cache       = {}
     self.cacheBuilt  = false
-
-    -- Register console commands so the player can toggle the mod at runtime.
-    addConsoleCommand("fbdToggle", "Toggle Farmland Border Display on/off",    "cmdToggle",      FBD)
-    addConsoleCommand("fbdAlways", "Show farmland borders even outside build mode", "cmdAlways", FBD)
 
     -- Register a proxy with g_debugManager so that borders are also drawn
     -- while the ConstructionScreen / ShopMenu is open (the normal mission
@@ -89,9 +80,6 @@ function FBD:deleteMap()
     self.cache      = {}
     self.cacheBuilt = false
     self.terrainNode = nil
-
-    removeConsoleCommand("fbdToggle")
-    removeConsoleCommand("fbdAlways")
 
     if g_debugManager ~= nil then
         g_debugManager:removeGroup(MODNAME)
@@ -147,21 +135,6 @@ function FBD:_renderBorders()
             end
         end
     end
-end
-
--- =============================================================================
--- Console command handlers
--- =============================================================================
-
-function FBD:cmdToggle()
-    self.isEnabled = not self.isEnabled
-    print(string.format("[%s] Overlay %s.", MODNAME, self.isEnabled and "ENABLED" or "DISABLED"))
-end
-
-function FBD:cmdAlways()
-    FBD.showInGame = not FBD.showInGame
-    FBD.writeSettings()
-    print(string.format("[%s] Show-in-game %s.", MODNAME, FBD.showInGame and "ON" or "OFF"))
 end
 
 -- =============================================================================
