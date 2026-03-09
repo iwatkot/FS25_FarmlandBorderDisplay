@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<modDesc descVersion="106">
+  <author>iwatkot</author>
+  <version>1.0.0.0</version>
+  <iconFilename>icon_FarmlandsBorderDisplay.dds</iconFilename>
+
+  <title>
+    <en>Farmland Border Display</en>
+    <de>Grundstücksgrenze Anzeigen</de>
+    <fr>Affichage Des Bordures De Terrain</fr>
+    <ru>Отображение Границ Участков</ru>
+    <pl>Wyświetlanie Granic Działek</pl>
+  </title>
+
+  <description>
+    <en><![CDATA[Highlights farmland borders in the building/shop placement menu and optionally during normal gameplay.
+
+Color legend:
+  Green  = owned by you
+  Yellow = unowned (purchasable)
+  Orange = owned by another player / AI
+
+Settings are available in the in-game menu (ESC > Settings).
+]]></en>
+    <de><![CDATA[Hebt Grundstücksgrenzen im Bau-/Shop-Platzierungsmenü und optional während des normalen Spiels hervor.
+
+Farbkodierung:
+  Grün   = dir gehört
+  Gelb   = unbesetzt (käuflich)
+  Orange = gehört einem anderen Spieler / KI
+
+Einstellungen sind im Spielmenü verfügbar (ESC > Einstellungen).
+]]></de>
+    <fr><![CDATA[Affiche les bordures des terrains agricoles dans le menu de construction/boutique et optionnellement en jeu.
+
+Légende des couleurs :
+  Vert   = vous appartient
+  Jaune  = non possédé (achetable)
+  Orange = appartient à un autre joueur / IA
+
+Les paramètres sont disponibles dans le menu du jeu (ESC > Paramètres).
+]]></fr>
+    <ru><![CDATA[Выделяет границы участков в меню строительства/магазина, а также опционально во время игры.
+
+Цветовая легенда:
+  Зелёный = принадлежит вам
+  Жёлтый  = не занят (можно купить)
+  Оранжевый = принадлежит другому игроку / ИИ
+
+Настройки доступны в игровом меню (ESC > Настройки).
+]]></ru>
+    <pl><![CDATA[Podświetla granice działek w menu budowania/sklepu i opcjonalnie podczas normalnej rozgrywki.
+
+Legenda kolorów:
+  Zielony  = należy do ciebie
+  Żółty    = niezajęty (do kupienia)
+  Pomarańczowy = należy do innego gracza / AI
+
+Ustawienia dostępne w menu gry (ESC > Ustawienia).
+]]></pl>
+  </description>
+
+  <multiplayer supported="false" />
+
+  <extraSourceFiles>
+    <sourceFile filename="scripts/FarmlandBorderDisplay.lua" />
+  </extraSourceFiles>
+</modDesc>

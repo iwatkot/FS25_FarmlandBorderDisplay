@@ -1,1 +1,5 @@
 *.exe
+testResult_*.html
+testResult_*.xml
+TestRunner.log
+icon_FarmlandsBorderDisplay.png

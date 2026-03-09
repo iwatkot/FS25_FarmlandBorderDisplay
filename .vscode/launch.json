@@ -1,0 +1,26 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run TestRunner",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/.vscode/run_tests.ps1",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Pack Mod",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/.vscode/pack_mod.ps1",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Convert Icon",
+            "type": "PowerShell",
+            "request": "launch",
+            "script": "${workspaceFolder}/.vscode/convert_icon.ps1",
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
