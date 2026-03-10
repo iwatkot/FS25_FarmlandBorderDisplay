@@ -3,9 +3,9 @@
 -- Draws colored polygon outlines around every farmland.
 --
 -- Color legend:
---   Green  = owned by the local player's farm
---   Yellow = unowned (available for purchase)
---   Orange = owned by another player or AI
+--   Cyan  = owned by the local player's farm
+--   White = unowned (available for purchase)
+--   Red   = owned by another player or AI
 --
 -- Settings are available in the in-game menu (ESC → Settings).
 -- =============================================================================
@@ -34,9 +34,9 @@ FBD.terrainNode = nil
 
 -- Display colours [r, g, b] (0-1 range)
 FBD.COLORS = {
-    OWNED   = { 0.10, 0.95, 0.10 },  -- bright green
-    UNOWNED = { 0.95, 0.95, 0.10 },  -- yellow
-    FOREIGN = { 1.00, 0.50, 0.10 },  -- orange
+    OWNED   = { 0.00, 0.90, 1.00 },  -- cyan
+    UNOWNED = { 1.00, 1.00, 1.00 },  -- white
+    FOREIGN = { 1.00, 0.10, 0.15 },  -- red
 }
 
 FBD.BORDER_Y_OFFSET = 0.4  -- metres above terrain so lines are always visible
