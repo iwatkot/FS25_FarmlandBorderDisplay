@@ -31,6 +31,11 @@ FBD.menuInjected = false -- guard: inject the settings UI only once
 FBD.cache       = {}
 FBD.cacheBuilt  = false
 FBD.terrainNode = nil
+FBD.meshRoot    = nil
+FBD.meshProtoRoot = nil
+FBD.meshProtoNode = nil
+FBD.visuals     = {}
+FBD.visualStatsLogged = false
 
 -- Display colours [r, g, b] (0-1 range)
 FBD.COLORS = {
@@ -39,7 +44,8 @@ FBD.COLORS = {
     FOREIGN = { 1.00, 0.10, 0.15 },  -- red
 }
 
-FBD.BORDER_Y_OFFSET = 0.4  -- metres above terrain so lines are always visible
+FBD.BORDER_Y_OFFSET = 0.8  -- lift borders above short crops/grass
+FBD.BORDER_POINT_SIZE = 0.22 -- world-space size for cube-like point markers
 
 -- =============================================================================
 -- addModEventListener callbacks
@@ -50,6 +56,48 @@ function FBD:loadMap(_filename)
     self.terrainNode = g_currentMission and g_currentMission.terrainRootNode
     self.cache       = {}
     self.cacheBuilt  = false
+    self.visuals     = {}
+    self.visualStatsLogged = false
+
+    self:_ensureMeshRoot()
+
+    -- Load a tiny generic mesh once and clone it per segment.
+    -- This avoids per-frame debug drawing and allows visible thickness.
+    local relProtoPath = "data/effects/debug/effectDebugMesh.i3d"
+    local candidates = {
+        relProtoPath,
+    }
+    if Utils ~= nil and Utils.getFilename ~= nil then
+        local p = Utils.getFilename(relProtoPath, nil)
+        if p ~= nil and p ~= "" then
+            candidates[#candidates + 1] = p
+        end
+    end
+    if getAppBasePath ~= nil then
+        local base = getAppBasePath()
+        if base ~= nil and base ~= "" then
+            candidates[#candidates + 1] = base .. relProtoPath
+        end
+    end
+
+    local protoRoot = 0
+    local usedPath = nil
+    for _, path in ipairs(candidates) do
+        protoRoot = loadI3DFile(path, false, false, false)
+        if protoRoot ~= nil and protoRoot ~= 0 then
+            usedPath = path
+            break
+        end
+    end
+
+    if protoRoot ~= nil and protoRoot ~= 0 then
+        self.meshProtoRoot = protoRoot
+        local n = getNumOfChildren(protoRoot)
+        self.meshProtoNode = (n > 0) and getChildAt(protoRoot, 0) or protoRoot
+        print(string.format("[%s] Prototype mesh loaded from '%s'.", MODNAME, usedPath or "<unknown>"))
+    else
+        print(string.format("[%s] WARNING: Could not load prototype mesh from any known path.", MODNAME))
+    end
 
     -- Register a proxy with g_debugManager so that borders are also drawn
     -- while the ConstructionScreen / ShopMenu is open (the normal mission
@@ -57,13 +105,26 @@ function FBD:loadMap(_filename)
     if g_debugManager ~= nil then
         local proxy = {}
         proxy.getShouldBeDrawn = function()
-            if not FBD.isEnabled then return false end
-            if not FBD.showInBuildMenu then return false end
-            if g_gui == nil or not g_gui:getIsGuiVisible() then return false end
+            if not FBD.isEnabled then
+                FBD:_setMeshVisible(false)
+                return false
+            end
+            if not FBD.showInBuildMenu then
+                FBD:_setMeshVisible(false)
+                return false
+            end
+            if g_gui == nil or not g_gui:getIsGuiVisible() then
+                FBD:_setMeshVisible(false)
+                return false
+            end
             local name = g_gui.currentGuiName
-            return name == "ConstructionScreen"
+            local isBuildScreen = name == "ConstructionScreen"
                 or name == "ShopMenu"
                 or name == "ShopConfigScreen"
+            if not isBuildScreen then
+                FBD:_setMeshVisible(false)
+            end
+            return isBuildScreen
         end
         proxy.draw = function()
             FBD:_renderBorders()
@@ -77,6 +138,8 @@ end
 
 --- Called when the map is unloaded (back to main menu / mission end).
 function FBD:deleteMap()
+    self:_clearVisuals()
+
     self.cache      = {}
     self.cacheBuilt = false
     self.terrainNode = nil
@@ -91,16 +154,31 @@ end
 --- Called every render frame during normal gameplay (not during full-screen GUIs).
 --- The DebugManager proxy registered in loadMap handles ConstructionScreen / ShopMenu.
 function FBD:draw()
-    if not self.isEnabled then return end
-    if not FBD.showInGame then return end
+    if not self.isEnabled then
+        self:_setMeshVisible(false)
+        return
+    end
+    if not FBD.showInGame then
+        self:_setMeshVisible(false)
+        return
+    end
     -- When a full-screen GUI is open the proxy handles rendering; skip to avoid double-drawing.
-    if g_gui ~= nil and g_gui:getIsGuiVisible() then return end
-    if g_currentMission == nil then return end
+    if g_gui ~= nil and g_gui:getIsGuiVisible() then
+        self:_setMeshVisible(false)
+        return
+    end
+    if g_currentMission == nil then
+        self:_setMeshVisible(false)
+        return
+    end
 
     -- Grab terrain node lazily (it may not be set on the very first frame)
     if self.terrainNode == nil or self.terrainNode == 0 then
         self.terrainNode = g_currentMission.terrainRootNode
-        if self.terrainNode == nil or self.terrainNode == 0 then return end
+        if self.terrainNode == nil or self.terrainNode == 0 then
+            self:_setMeshVisible(false)
+            return
+        end
     end
 
     self:_renderBorders()
@@ -108,33 +186,177 @@ end
 
 --- Shared rendering path used by both draw() and the DebugManager proxy.
 function FBD:_renderBorders()
-    if g_currentMission == nil then return end
+    if g_currentMission == nil then
+        self:_setMeshVisible(false)
+        return
+    end
 
     if self.terrainNode == nil or self.terrainNode == 0 then
         self.terrainNode = g_currentMission.terrainRootNode
-        if self.terrainNode == nil or self.terrainNode == 0 then return end
+        if self.terrainNode == nil or self.terrainNode == 0 then
+            self:_setMeshVisible(false)
+            return
+        end
+    end
+
+    self:_ensureMeshRoot()
+    if self.meshRoot == nil or self.meshRoot == 0 then
+        self:_setMeshVisible(false)
+        return
     end
 
     if not self.cacheBuilt then
         self:_buildCache()
     end
 
+    self:_ensureVisualsBuilt()
+
     local localFarmId  = g_currentMission:getFarmId()
     local mapping       = g_farmlandManager ~= nil and g_farmlandManager.farmlandMapping
     local showOnlyOwned = FBD.showOnlyOwned
 
     for id, entry in pairs(self.cache) do
-        if entry.farmland ~= nil then
+        if entry.farmland ~= nil and self.visuals[id] ~= nil then
             local fid = (mapping and mapping[id]) or 0
-            if not showOnlyOwned or fid == localFarmId then
-                local color = self:_pickColor(fid, localFarmId)
-                local r, g, b = color[1], color[2], color[3]
-                for _, seg in ipairs(entry.segs) do
-                    drawDebugLine(seg[1], seg[2], seg[3], r, g, b, seg[4], seg[5], seg[6], r, g, b)
-                end
+            local visual = self.visuals[id]
+
+            -- Ownership can change at runtime; rebuild this farmland's meshes on change.
+            if visual.ownerFarmId ~= fid then
+                self:_rebuildFarmlandVisual(id, entry, fid, localFarmId)
+                visual = self.visuals[id]
+            end
+
+            setVisibility(visual.rootNode, (not showOnlyOwned or fid == localFarmId))
+        end
+    end
+
+    self:_setMeshVisible(true)
+end
+
+function FBD:_setMeshVisible(visible)
+    if self.meshRoot ~= nil and self.meshRoot ~= 0 then
+        setVisibility(self.meshRoot, visible)
+    end
+end
+
+function FBD:_ensureMeshRoot()
+    if self.meshRoot ~= nil and self.meshRoot ~= 0 then
+        return
+    end
+
+    if self.terrainNode == nil or self.terrainNode == 0 then
+        if g_currentMission ~= nil then
+            self.terrainNode = g_currentMission.terrainRootNode
+        end
+    end
+
+    if self.terrainNode ~= nil and self.terrainNode ~= 0 then
+        self.meshRoot = createTransformGroup("fbd_borderMeshRoot")
+        link(self.terrainNode, self.meshRoot)
+        setVisibility(self.meshRoot, false)
+    end
+end
+
+function FBD:_clearVisuals()
+    if self.meshRoot ~= nil and self.meshRoot ~= 0 then
+        delete(self.meshRoot)
+    end
+    if self.meshProtoRoot ~= nil and self.meshProtoRoot ~= 0 then
+        delete(self.meshProtoRoot)
+    end
+    self.meshRoot = nil
+    self.meshProtoRoot = nil
+    self.meshProtoNode = nil
+    self.visuals = {}
+end
+
+function FBD:_ensureVisualsBuilt()
+    if self.meshRoot == nil or self.meshRoot == 0 or self.meshProtoNode == nil or self.meshProtoNode == 0 then
+        return
+    end
+    if next(self.visuals) ~= nil then
+        return
+    end
+
+    local localFarmId  = g_currentMission:getFarmId()
+    local mapping = g_farmlandManager ~= nil and g_farmlandManager.farmlandMapping
+    local farmlandCount = 0
+    local segTotal = 0
+    local cloneFailTotal = 0
+    for id, entry in pairs(self.cache) do
+        farmlandCount = farmlandCount + 1
+        local fid = (mapping and mapping[id]) or 0
+        local built, cloneFails = self:_rebuildFarmlandVisual(id, entry, fid, localFarmId)
+        segTotal = segTotal + (built or 0)
+        cloneFailTotal = cloneFailTotal + (cloneFails or 0)
+    end
+
+    if not self.visualStatsLogged then
+        self.visualStatsLogged = true
+        print(string.format("[%s] Visual mesh build: %d farmland roots, %d segment nodes, %d clone failures.",
+            MODNAME, farmlandCount, segTotal, cloneFailTotal))
+    end
+end
+
+function FBD:_rebuildFarmlandVisual(id, entry, fid, localFarmId)
+    if self.meshRoot == nil or self.meshRoot == 0 or self.meshProtoNode == nil or self.meshProtoNode == 0 then
+        return
+    end
+
+    local oldVisual = self.visuals[id]
+    if oldVisual ~= nil and oldVisual.rootNode ~= nil and oldVisual.rootNode ~= 0 then
+        delete(oldVisual.rootNode)
+    end
+
+    local rootNode = createTransformGroup(string.format("fbd_farmland_%d", id))
+    link(self.meshRoot, rootNode)
+
+    local color = self:_pickColor(fid, localFarmId)
+    local r, g, b = color[1], color[2], color[3]
+    local pointSize = FBD.BORDER_POINT_SIZE
+    local builtCount = 0
+    local cloneFailures = 0
+
+    for _, seg in ipairs(entry.segs) do
+        local x1, y1, z1 = seg[1], seg[2], seg[3]
+        local x2, y2, z2 = seg[4], seg[5], seg[6]
+        local dx = x2 - x1
+        local dz = z2 - z1
+        local len = math.sqrt(dx * dx + dz * dz)
+
+        if len > 0.0001 then
+            local node = clone(self.meshProtoNode, false, false, false)
+            if node == nil or node == 0 then
+                -- Fallback: some i3d roots clone reliably only from loaded root.
+                node = clone(self.meshProtoRoot, false, false, false)
+            end
+            if node == nil or node == 0 then
+                cloneFailures = cloneFailures + 1
+            else
+            link(rootNode, node)
+
+            local mx = (x1 + x2) * 0.5
+            local my = (y1 + y2) * 0.5
+            local mz = (z1 + z2) * 0.5
+            setWorldTranslation(node, mx, my, mz)
+            setWorldRotation(node, 0, 0, 0)
+            -- Transform API uses x,y,z; keep all equal for true point blocks.
+            setScale(node, pointSize, pointSize, pointSize)
+
+            -- Keep compatibility across different base materials/shaders.
+            setShaderParameterRecursive(node, "colorScale", r, g, b, 1, false)
+            setShaderParameterRecursive(node, "emitColor", r, g, b, 1, false)
+            builtCount = builtCount + 1
             end
         end
     end
+
+    self.visuals[id] = {
+        rootNode = rootNode,
+        ownerFarmId = fid,
+    }
+
+    return builtCount, cloneFailures
 end
 
 -- =============================================================================
