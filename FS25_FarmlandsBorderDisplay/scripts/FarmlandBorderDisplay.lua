@@ -38,6 +38,7 @@ FBD.meshProtoRoot = nil
 FBD.meshProtoNode = nil
 FBD.visuals     = {}
 FBD.visualStatsLogged = false
+FBD.nextHeightRefreshTime = 0
 
 -- Display colours [r, g, b] (0-1 range)
 FBD.COLORS = {
@@ -55,6 +56,7 @@ FBD.MARKER_SCALE_Z = 10
 FBD.PERCENT_MIN = 10
 FBD.PERCENT_MAX = 200
 FBD.PERCENT_STEP = 10
+FBD.HEIGHT_REFRESH_INTERVAL_MS = 400
 
 -- =============================================================================
 -- addModEventListener callbacks
@@ -67,6 +69,7 @@ function FBD:loadMap(_filename)
     self.cacheBuilt  = false
     self.visuals     = {}
     self.visualStatsLogged = false
+    self.nextHeightRefreshTime = 0
 
     self:_ensureMeshRoot()
 
@@ -290,7 +293,37 @@ function FBD:_renderBorders()
         end
     end
 
+    -- Keep marker Y aligned with terrain after terraforming/leveling changes.
+    self:_refreshMarkerHeights()
+
     self:_setMeshVisible(true)
+end
+
+function FBD:_refreshMarkerHeights()
+    if self.terrainNode == nil or self.terrainNode == 0 then return end
+
+    local now = g_time or 0
+    if now < self.nextHeightRefreshTime then
+        return
+    end
+    self.nextHeightRefreshTime = now + FBD.HEIGHT_REFRESH_INTERVAL_MS
+
+    local yOff = FBD.BORDER_BASE_Y_OFFSET * (FBD.heightPercent / 100)
+
+    for _, visual in pairs(self.visuals) do
+        local markers = visual.markers
+        if markers ~= nil then
+            for _, marker in ipairs(markers) do
+                local newY = getTerrainHeightAtWorldPos(self.terrainNode, marker.x, 0, marker.z) + yOff
+                if marker.y == nil or math.abs(newY - marker.y) > 0.005 then
+                    marker.y = newY
+                    if marker.node ~= nil and marker.node ~= 0 then
+                        setWorldTranslation(marker.node, marker.x, newY, marker.z)
+                    end
+                end
+            end
+        end
+    end
 end
 
 function FBD:_setMeshVisible(visible)
@@ -414,6 +447,7 @@ function FBD:_rebuildFarmlandVisual(id, entry, fid, localFarmId)
         * (FBD.pointSizePercent / 100)
     local builtCount = 0
     local cloneFailures = 0
+    local markers = {}
 
     for _, seg in ipairs(entry.segs) do
         local x1, y1, z1 = seg[1], seg[2], seg[3]
@@ -444,6 +478,7 @@ function FBD:_rebuildFarmlandVisual(id, entry, fid, localFarmId)
                 pointSize * FBD.MARKER_SCALE_Z)
 
             self:_styleMarkerNode(node, colorKey)
+            markers[#markers + 1] = { node = node, x = mx, y = my, z = mz }
             builtCount = builtCount + 1
             end
         end
@@ -452,6 +487,7 @@ function FBD:_rebuildFarmlandVisual(id, entry, fid, localFarmId)
     self.visuals[id] = {
         rootNode = rootNode,
         ownerFarmId = fid,
+        markers = markers,
     }
 
     return builtCount, cloneFailures
