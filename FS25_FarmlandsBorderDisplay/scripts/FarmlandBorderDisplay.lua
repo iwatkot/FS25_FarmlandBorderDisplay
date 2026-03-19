@@ -42,7 +42,7 @@ FBD.visualStatsLogged = false
 -- Display colours [r, g, b] (0-1 range)
 FBD.COLORS = {
     OWNED   = { 0.10, 0.95, 0.10 },  -- green
-    UNOWNED = { 0.55, 0.55, 0.55 },  -- gray
+    UNOWNED = { 0.00, 0.90, 1.00 },  -- cyan
     FOREIGN = { 1.00, 0.10, 0.15 },  -- red
 }
 
