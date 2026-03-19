@@ -45,7 +45,7 @@ FBD.COLORS = {
 }
 
 FBD.BORDER_Y_OFFSET = 0.8  -- lift borders above short crops/grass
-FBD.BORDER_POINT_SIZE = 0.22 -- world-space size for cube-like point markers
+FBD.BORDER_POINT_SIZE = 2.00 -- world-space size for spherical point markers
 
 -- =============================================================================
 -- addModEventListener callbacks
@@ -63,7 +63,7 @@ function FBD:loadMap(_filename)
 
     -- Load a tiny generic mesh once and clone it per segment.
     -- This avoids per-frame debug drawing and allows visible thickness.
-    local relProtoPath = "data/effects/debug/effectDebugMesh.i3d"
+    local relProtoPath = "data/placeables/brandless/animalHusbandries/doghouse/dogball.i3d"
     local candidates = {
         relProtoPath,
     }
@@ -343,9 +343,8 @@ function FBD:_rebuildFarmlandVisual(id, entry, fid, localFarmId)
             -- Transform API uses x,y,z; keep all equal for true point blocks.
             setScale(node, pointSize, pointSize, pointSize)
 
-            -- Keep compatibility across different base materials/shaders.
+            -- dogball uses vehicle shader material with colorScale custom parameter.
             setShaderParameterRecursive(node, "colorScale", r, g, b, 1, false)
-            setShaderParameterRecursive(node, "emitColor", r, g, b, 1, false)
             builtCount = builtCount + 1
             end
         end
