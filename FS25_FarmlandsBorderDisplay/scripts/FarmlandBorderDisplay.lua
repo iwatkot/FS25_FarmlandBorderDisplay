@@ -36,9 +36,6 @@ FBD.terrainNode = nil
 FBD.meshRoot    = nil
 FBD.meshProtoRoot = nil
 FBD.meshProtoNode = nil
-FBD.debugMaterialRoot = nil
-FBD.debugBaseMaterialId = 0
-FBD.flatMaterials = {}
 FBD.visuals     = {}
 FBD.visualStatsLogged = false
 
@@ -52,6 +49,9 @@ FBD.COLORS = {
 FBD.BORDER_BASE_Y_OFFSET = 0.8
 FBD.BORDER_BASE_POINT_SIZE = 0.10
 FBD.BORDER_POINT_MULTIPLIER = 40
+FBD.MARKER_SCALE_X = 10
+FBD.MARKER_SCALE_Y = 1
+FBD.MARKER_SCALE_Z = 10
 FBD.PERCENT_MIN = 10
 FBD.PERCENT_MAX = 200
 FBD.PERCENT_STEP = 10
@@ -72,7 +72,7 @@ function FBD:loadMap(_filename)
 
     -- Load a tiny generic mesh once and clone it per segment.
     -- This avoids per-frame debug drawing and allows visible thickness.
-    local relProtoPath = "data/placeables/brandless/animalHusbandries/doghouse/dogball.i3d"
+    local relProtoPath = "data/shared/visualization/fenceSnapMarker.i3d"
     local candidates = {
         relProtoPath,
     }
@@ -106,32 +106,6 @@ function FBD:loadMap(_filename)
         print(string.format("[%s] Prototype mesh loaded from '%s'.", MODNAME, usedPath or "<unknown>"))
     else
         print(string.format("[%s] WARNING: Could not load prototype mesh from any known path.", MODNAME))
-    end
-
-    -- Load debug material holder to build flat, solid-color materials.
-    local matRoot = loadI3DFile("data/shared/materialHolders/debugMaterialHolder.i3d", false, false, false)
-    if matRoot ~= nil and matRoot ~= 0 then
-        self.debugMaterialRoot = matRoot
-        local baseMat = 0
-        self:_forEachShapeRecursive(matRoot, function(shapeId, numMaterials)
-            if baseMat == 0 and numMaterials > 0 then
-                baseMat = getMaterial(shapeId, 0)
-            end
-        end)
-        self.debugBaseMaterialId = baseMat
-        self.flatMaterials = {}
-
-        if baseMat ~= 0 then
-            for key, c in pairs(FBD.COLORS) do
-                local m = baseMat
-                m = setMaterialCustomParameter(m, "color", c[1], c[2], c[3], 0, false)
-                m = setMaterialCustomParameter(m, "alpha", 1, 0, 0, 0, false)
-                m = setMaterialCustomParameter(m, "mixAmount", 1, 0, 0, 0, false)
-                self.flatMaterials[key] = m
-            end
-        end
-    else
-        print(string.format("[%s] WARNING: Could not load debug material holder.", MODNAME))
     end
 
     -- Register a proxy with g_debugManager so that borders are also drawn
@@ -352,15 +326,9 @@ function FBD:_clearVisuals()
     if self.meshProtoRoot ~= nil and self.meshProtoRoot ~= 0 then
         delete(self.meshProtoRoot)
     end
-    if self.debugMaterialRoot ~= nil and self.debugMaterialRoot ~= 0 then
-        delete(self.debugMaterialRoot)
-    end
     self.meshRoot = nil
     self.meshProtoRoot = nil
     self.meshProtoNode = nil
-    self.debugMaterialRoot = nil
-    self.debugBaseMaterialId = 0
-    self.flatMaterials = {}
 end
 
 function FBD:_forEachShapeRecursive(nodeId, callback)
@@ -380,26 +348,15 @@ end
 function FBD:_styleMarkerNode(nodeId, colorKey)
     local fallback = FBD.COLORS[colorKey] or FBD.COLORS.UNOWNED
     local r, g, b = fallback[1], fallback[2], fallback[3]
-    local flatMaterial = self.flatMaterials ~= nil and self.flatMaterials[colorKey] or 0
 
     self:_forEachShapeRecursive(nodeId, function(shapeId, numMaterials)
         -- Markers are overlays; avoid shadow rendering costs.
         setShapeCastShadowmap(shapeId, false)
         setShapeReceiveShadowmap(shapeId, false)
 
-        if flatMaterial ~= nil and flatMaterial ~= 0 then
-            for mi = 0, numMaterials - 1 do
-                setMaterial(shapeId, flatMaterial, mi)
-            end
-            -- Force debug material parameters after assignment (safety for shared edits).
-            setShaderParameter(shapeId, "color", r, g, b, 0, false, -1)
-            setShaderParameter(shapeId, "alpha", 1, 0, 0, 0, false, -1)
-            setShaderParameter(shapeId, "mixAmount", 1, 0, 0, 0, false, -1)
-        else
-            -- Fallback path when debug material holder is unavailable.
-            setShaderParameter(shapeId, "colorScale", r, g, b, 1, false, -1)
-            setShaderParameter(shapeId, "emitColor", r, g, b, 1, false, -1)
-        end
+        -- fenceSnapMarker uses glow shader parameters.
+        setShaderParameter(shapeId, "emitColor", r, g, b, 1, false, -1)
+        setShaderParameter(shapeId, "lightControl", 1, 0, 0, 0, false, -1)
     end)
 end
 
@@ -452,8 +409,6 @@ function FBD:_rebuildFarmlandVisual(id, entry, fid, localFarmId)
     else
         colorKey = "UNOWNED"
     end
-    local color = FBD.COLORS[colorKey]
-    local r, g, b = color[1], color[2], color[3]
     local pointSize = FBD.BORDER_BASE_POINT_SIZE
         * FBD.BORDER_POINT_MULTIPLIER
         * (FBD.pointSizePercent / 100)
@@ -483,8 +438,10 @@ function FBD:_rebuildFarmlandVisual(id, entry, fid, localFarmId)
             local mz = (z1 + z2) * 0.5
             setWorldTranslation(node, mx, my, mz)
             setWorldRotation(node, 0, 0, 0)
-            -- Transform API uses x,y,z; keep all equal for true point blocks.
-            setScale(node, pointSize, pointSize, pointSize)
+            setScale(node,
+                pointSize * FBD.MARKER_SCALE_X,
+                pointSize * FBD.MARKER_SCALE_Y,
+                pointSize * FBD.MARKER_SCALE_Z)
 
             self:_styleMarkerNode(node, colorKey)
             builtCount = builtCount + 1
