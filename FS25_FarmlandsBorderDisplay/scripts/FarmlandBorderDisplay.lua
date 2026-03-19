@@ -20,7 +20,7 @@ local FBD = FarmlandBorderDisplay
 
 FBD.isEnabled   = true   -- master on/off switch
 -- Runtime settings (persisted to XML, editable in InGameMenu)
-FBD.showInBuildMenu = true   -- show when ConstructionScreen / ShopMenu is open
+FBD.showInBuildMenu = true   -- show when ConstructionScreen is open
 FBD.showInGame      = false  -- show during normal gameplay
 FBD.showOnlyOwned   = false  -- when true, hide unowned and foreign farmlands
 FBD.pointSizePercent = 100   -- marker size percentage
@@ -36,6 +36,9 @@ FBD.terrainNode = nil
 FBD.meshRoot    = nil
 FBD.meshProtoRoot = nil
 FBD.meshProtoNode = nil
+FBD.debugMaterialRoot = nil
+FBD.debugBaseMaterialId = 0
+FBD.flatMaterials = {}
 FBD.visuals     = {}
 FBD.visualStatsLogged = false
 
@@ -105,8 +108,34 @@ function FBD:loadMap(_filename)
         print(string.format("[%s] WARNING: Could not load prototype mesh from any known path.", MODNAME))
     end
 
+    -- Load debug material holder to build flat, solid-color materials.
+    local matRoot = loadI3DFile("data/shared/materialHolders/debugMaterialHolder.i3d", false, false, false)
+    if matRoot ~= nil and matRoot ~= 0 then
+        self.debugMaterialRoot = matRoot
+        local baseMat = 0
+        self:_forEachShapeRecursive(matRoot, function(shapeId, numMaterials)
+            if baseMat == 0 and numMaterials > 0 then
+                baseMat = getMaterial(shapeId, 0)
+            end
+        end)
+        self.debugBaseMaterialId = baseMat
+        self.flatMaterials = {}
+
+        if baseMat ~= 0 then
+            for key, c in pairs(FBD.COLORS) do
+                local m = baseMat
+                m = setMaterialCustomParameter(m, "color", c[1], c[2], c[3], 0, false)
+                m = setMaterialCustomParameter(m, "alpha", 1, 0, 0, 0, false)
+                m = setMaterialCustomParameter(m, "mixAmount", 1, 0, 0, 0, false)
+                self.flatMaterials[key] = m
+            end
+        end
+    else
+        print(string.format("[%s] WARNING: Could not load debug material holder.", MODNAME))
+    end
+
     -- Register a proxy with g_debugManager so that borders are also drawn
-    -- while the ConstructionScreen / ShopMenu is open (the normal mission
+    -- while the ConstructionScreen is open (the normal mission
     -- draw() callback is not invoked during those screens).
     if g_debugManager ~= nil then
         local proxy = {}
@@ -209,7 +238,7 @@ function FBD:_applyVisualSettingsChange(needsCacheRebuild)
 end
 
 --- Called every render frame during normal gameplay (not during full-screen GUIs).
---- The DebugManager proxy registered in loadMap handles ConstructionScreen / ShopMenu.
+--- The DebugManager proxy registered in loadMap handles ConstructionScreen.
 function FBD:draw()
     if not self.isEnabled then
         self:_setMeshVisible(false)
@@ -323,9 +352,55 @@ function FBD:_clearVisuals()
     if self.meshProtoRoot ~= nil and self.meshProtoRoot ~= 0 then
         delete(self.meshProtoRoot)
     end
+    if self.debugMaterialRoot ~= nil and self.debugMaterialRoot ~= 0 then
+        delete(self.debugMaterialRoot)
+    end
     self.meshRoot = nil
     self.meshProtoRoot = nil
     self.meshProtoNode = nil
+    self.debugMaterialRoot = nil
+    self.debugBaseMaterialId = 0
+    self.flatMaterials = {}
+end
+
+function FBD:_forEachShapeRecursive(nodeId, callback)
+    if nodeId == nil or nodeId == 0 then return end
+
+    local ok, numMaterials = pcall(getNumOfMaterials, nodeId)
+    if ok and numMaterials ~= nil and numMaterials > 0 then
+        callback(nodeId, numMaterials)
+    end
+
+    local childCount = getNumOfChildren(nodeId)
+    for i = 0, childCount - 1 do
+        self:_forEachShapeRecursive(getChildAt(nodeId, i), callback)
+    end
+end
+
+function FBD:_styleMarkerNode(nodeId, colorKey)
+    local fallback = FBD.COLORS[colorKey] or FBD.COLORS.UNOWNED
+    local r, g, b = fallback[1], fallback[2], fallback[3]
+    local flatMaterial = self.flatMaterials ~= nil and self.flatMaterials[colorKey] or 0
+
+    self:_forEachShapeRecursive(nodeId, function(shapeId, numMaterials)
+        -- Markers are overlays; avoid shadow rendering costs.
+        setShapeCastShadowmap(shapeId, false)
+        setShapeReceiveShadowmap(shapeId, false)
+
+        if flatMaterial ~= nil and flatMaterial ~= 0 then
+            for mi = 0, numMaterials - 1 do
+                setMaterial(shapeId, flatMaterial, mi)
+            end
+            -- Force debug material parameters after assignment (safety for shared edits).
+            setShaderParameter(shapeId, "color", r, g, b, 0, false, -1)
+            setShaderParameter(shapeId, "alpha", 1, 0, 0, 0, false, -1)
+            setShaderParameter(shapeId, "mixAmount", 1, 0, 0, 0, false, -1)
+        else
+            -- Fallback path when debug material holder is unavailable.
+            setShaderParameter(shapeId, "colorScale", r, g, b, 1, false, -1)
+            setShaderParameter(shapeId, "emitColor", r, g, b, 1, false, -1)
+        end
+    end)
 end
 
 function FBD:_ensureVisualsBuilt()
@@ -369,7 +444,15 @@ function FBD:_rebuildFarmlandVisual(id, entry, fid, localFarmId)
     local rootNode = createTransformGroup(string.format("fbd_farmland_%d", id))
     link(self.meshRoot, rootNode)
 
-    local color = self:_pickColor(fid, localFarmId)
+    local colorKey
+    if fid == localFarmId and localFarmId ~= 0 then
+        colorKey = "OWNED"
+    elseif fid ~= 0 then
+        colorKey = "FOREIGN"
+    else
+        colorKey = "UNOWNED"
+    end
+    local color = FBD.COLORS[colorKey]
     local r, g, b = color[1], color[2], color[3]
     local pointSize = FBD.BORDER_BASE_POINT_SIZE
         * FBD.BORDER_POINT_MULTIPLIER
@@ -403,8 +486,7 @@ function FBD:_rebuildFarmlandVisual(id, entry, fid, localFarmId)
             -- Transform API uses x,y,z; keep all equal for true point blocks.
             setScale(node, pointSize, pointSize, pointSize)
 
-            -- dogball uses vehicle shader material with colorScale custom parameter.
-            setShaderParameterRecursive(node, "colorScale", r, g, b, 1, false)
+            self:_styleMarkerNode(node, colorKey)
             builtCount = builtCount + 1
             end
         end
@@ -700,7 +782,7 @@ function FBD.injectMenu()
     end
 
     addBinary("fbd_buildMenu", "Show in build menu",
-        "Show farmland borders in Construction / Shop screens",
+        "Show farmland borders in Construction",
         function() return FBD.showInBuildMenu end)
     addBinary("fbd_inGame",   "Show in game",
         "Show farmland borders during normal gameplay",

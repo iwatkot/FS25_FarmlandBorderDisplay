@@ -13,7 +13,7 @@
   </title>
 
   <description>
-    <en><![CDATA[Highlights farmland borders in the building/shop placement menu and optionally during normal gameplay.
+    <en><![CDATA[Highlights farmland borders in the building placement menu and optionally during normal gameplay.
 
 Color legend:
   Green = owned by you
@@ -22,7 +22,7 @@ Color legend:
 
 Settings are available in the in-game menu (ESC > Settings).
 ]]></en>
-    <de><![CDATA[Hebt Grundstücksgrenzen im Bau-/Shop-Platzierungsmenü und optional während des normalen Spiels hervor.
+    <de><![CDATA[Hebt Grundstücksgrenzen im Bau-Platzierungsmenü und optional während des normalen Spiels hervor.
 
 Farbkodierung:
   Grün  = dir gehört
@@ -31,7 +31,7 @@ Farbkodierung:
 
 Einstellungen sind im Spielmenü verfügbar (ESC > Einstellungen).
 ]]></de>
-    <fr><![CDATA[Affiche les bordures des terrains agricoles dans le menu de construction/boutique et optionnellement en jeu.
+    <fr><![CDATA[Affiche les bordures des terrains agricoles dans le menu de construction et optionnellement en jeu.
 
 Légende des couleurs :
   Vert  = vous appartient
@@ -40,7 +40,7 @@ Légende des couleurs :
 
 Les paramètres sont disponibles dans le menu du jeu (ESC > Paramètres).
 ]]></fr>
-    <ru><![CDATA[Выделяет границы участков в меню строительства/магазина, а также опционально во время игры.
+    <ru><![CDATA[Выделяет границы участков в меню строительства, а также опционально во время игры.
 
 Цветовая легенда:
   Зелёный = принадлежит вам
@@ -49,7 +49,7 @@ Les paramètres sont disponibles dans le menu du jeu (ESC > Paramètres).
 
 Настройки доступны в игровом меню (ESC > Настройки).
 ]]></ru>
-    <pl><![CDATA[Podświetla granice działek w menu budowania/sklepu i opcjonalnie podczas normalnej rozgrywki.
+    <pl><![CDATA[Podświetla granice działek w menu budowania i opcjonalnie podczas normalnej rozgrywki.
 
 Legenda kolorów:
   Zielony  = należy do ciebie
