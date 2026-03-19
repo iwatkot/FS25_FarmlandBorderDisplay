@@ -4,7 +4,7 @@
 --
 -- Color legend:
 --   Green = owned by the local player's farm
---   White = unowned (available for purchase)
+--   Gray  = unowned (available for purchase)
 --   Red   = owned by another player or AI
 --
 -- Settings are available in the in-game menu (ESC → Settings).
@@ -23,8 +23,8 @@ FBD.isEnabled   = true   -- master on/off switch
 FBD.showInBuildMenu = true   -- show when ConstructionScreen / ShopMenu is open
 FBD.showInGame      = false  -- show during normal gameplay
 FBD.showOnlyOwned   = false  -- when true, hide unowned and foreign farmlands
-FBD.pointSizePercent = 100   -- 100% of the default x40 point size
-FBD.heightPercent    = 200   -- 200% of the base height offset
+FBD.pointSizePercent = 100   -- marker size percentage
+FBD.heightPercent    = 200   -- marker height-above-ground percentage
 
 FBD.CONTROLS     = {}    -- UI element references for the settings menu
 FBD.menuInjected = false -- guard: inject the settings UI only once
@@ -42,7 +42,7 @@ FBD.visualStatsLogged = false
 -- Display colours [r, g, b] (0-1 range)
 FBD.COLORS = {
     OWNED   = { 0.10, 0.95, 0.10 },  -- green
-    UNOWNED = { 1.00, 1.00, 1.00 },  -- white
+    UNOWNED = { 0.55, 0.55, 0.55 },  -- gray
     FOREIGN = { 1.00, 0.10, 0.15 },  -- red
 }
 
@@ -634,6 +634,7 @@ function FBD.injectMenu()
         print(string.format("[%s] WARNING: settings template element not found; UI not injected.", MODNAME))
         return
     end
+    local multiTemplateBox = page.multiVolumeVoiceBox
 
     local function updateFocusIds(elem)
         if not elem then return end
@@ -659,7 +660,8 @@ function FBD.injectMenu()
     end
 
     local function addPercent(id, label, tooltip, getValue)
-        local box    = templateBox:clone(page.generalSettingsLayout)
+        local source = multiTemplateBox or templateBox
+        local box    = source:clone(page.generalSettingsLayout)
         box.id       = id .. "_box"
         local opt    = box.elements[1]
         opt.id       = id
@@ -707,10 +709,10 @@ function FBD.injectMenu()
         "Hide unowned and foreign farmlands",
         function() return FBD.showOnlyOwned end)
     addPercent("fbd_pointSizePct", "Point size (%)",
-        "Marker size relative to default x40",
+        "Choose the size of markers",
         function() return FBD.pointSizePercent end)
     addPercent("fbd_heightPct", "Height offset (%)",
-        "Vertical offset above terrain/crops",
+        "How high the markers are above the ground",
         function() return FBD.heightPercent end)
 
     page.generalSettingsLayout:invalidateLayout()

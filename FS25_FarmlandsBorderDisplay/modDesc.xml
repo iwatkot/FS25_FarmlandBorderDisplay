@@ -17,7 +17,7 @@
 
 Color legend:
   Green = owned by you
-  White = unowned (purchasable)
+  Gray  = unowned (purchasable)
   Red   = owned by another player
 
 Settings are available in the in-game menu (ESC > Settings).
@@ -26,7 +26,7 @@ Settings are available in the in-game menu (ESC > Settings).
 
 Farbkodierung:
   Grün  = dir gehört
-  Weiß  = unbesetzt (käuflich)
+  Grau  = unbesetzt (käuflich)
   Rot   = gehört einem anderen Spieler
 
 Einstellungen sind im Spielmenü verfügbar (ESC > Einstellungen).
@@ -35,7 +35,7 @@ Einstellungen sind im Spielmenü verfügbar (ESC > Einstellungen).
 
 Légende des couleurs :
   Vert  = vous appartient
-  Blanc = non possédé (achetable)
+  Gris  = non possédé (achetable)
   Rouge = appartient à un autre joueur
 
 Les paramètres sont disponibles dans le menu du jeu (ESC > Paramètres).
@@ -44,7 +44,7 @@ Les paramètres sont disponibles dans le menu du jeu (ESC > Paramètres).
 
 Цветовая легенда:
   Зелёный = принадлежит вам
-  Белый   = не занят (можно купить)
+  Серый   = не занят (можно купить)
   Красный = принадлежит другому игроку
 
 Настройки доступны в игровом меню (ESC > Настройки).
@@ -53,7 +53,7 @@ Les paramètres sont disponibles dans le menu du jeu (ESC > Paramètres).
 
 Legenda kolorów:
   Zielony  = należy do ciebie
-  Biały    = niezajęty (do kupienia)
+  Szary    = niezajęty (do kupienia)
   Czerwony = należy do innego gracza
 
 Ustawienia dostępne w menu gry (ESC > Ustawienia).
