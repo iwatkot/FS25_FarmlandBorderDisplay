@@ -16,45 +16,45 @@
     <en><![CDATA[Highlights farmland borders in the building/shop placement menu and optionally during normal gameplay.
 
 Color legend:
-  Cyan  = owned by you
+  Green = owned by you
   White = unowned (purchasable)
-  Red   = owned by another player / AI
+  Red   = owned by another player
 
 Settings are available in the in-game menu (ESC > Settings).
 ]]></en>
     <de><![CDATA[Hebt Grundstücksgrenzen im Bau-/Shop-Platzierungsmenü und optional während des normalen Spiels hervor.
 
 Farbkodierung:
-  Cyan  = dir gehört
+  Grün  = dir gehört
   Weiß  = unbesetzt (käuflich)
-  Rot   = gehört einem anderen Spieler / KI
+  Rot   = gehört einem anderen Spieler
 
 Einstellungen sind im Spielmenü verfügbar (ESC > Einstellungen).
 ]]></de>
     <fr><![CDATA[Affiche les bordures des terrains agricoles dans le menu de construction/boutique et optionnellement en jeu.
 
 Légende des couleurs :
-  Cyan  = vous appartient
+  Vert  = vous appartient
   Blanc = non possédé (achetable)
-  Rouge = appartient à un autre joueur / IA
+  Rouge = appartient à un autre joueur
 
 Les paramètres sont disponibles dans le menu du jeu (ESC > Paramètres).
 ]]></fr>
     <ru><![CDATA[Выделяет границы участков в меню строительства/магазина, а также опционально во время игры.
 
 Цветовая легенда:
-  Голубой = принадлежит вам
+  Зелёный = принадлежит вам
   Белый   = не занят (можно купить)
-  Красный = принадлежит другому игроку / ИИ
+  Красный = принадлежит другому игроку
 
 Настройки доступны в игровом меню (ESC > Настройки).
 ]]></ru>
     <pl><![CDATA[Podświetla granice działek w menu budowania/sklepu i opcjonalnie podczas normalnej rozgrywki.
 
 Legenda kolorów:
-  Cyjan    = należy do ciebie
+  Zielony  = należy do ciebie
   Biały    = niezajęty (do kupienia)
-  Czerwony = należy do innego gracza / AI
+  Czerwony = należy do innego gracza
 
 Ustawienia dostępne w menu gry (ESC > Ustawienia).
 ]]></pl>

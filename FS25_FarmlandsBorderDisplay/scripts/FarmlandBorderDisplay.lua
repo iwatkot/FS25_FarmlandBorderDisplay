@@ -3,7 +3,7 @@
 -- Draws colored polygon outlines around every farmland.
 --
 -- Color legend:
---   Cyan  = owned by the local player's farm
+--   Green = owned by the local player's farm
 --   White = unowned (available for purchase)
 --   Red   = owned by another player or AI
 --
@@ -23,6 +23,8 @@ FBD.isEnabled   = true   -- master on/off switch
 FBD.showInBuildMenu = true   -- show when ConstructionScreen / ShopMenu is open
 FBD.showInGame      = false  -- show during normal gameplay
 FBD.showOnlyOwned   = false  -- when true, hide unowned and foreign farmlands
+FBD.pointSizePercent = 100   -- 100% of the default x40 point size
+FBD.heightPercent    = 200   -- 200% of the base height offset
 
 FBD.CONTROLS     = {}    -- UI element references for the settings menu
 FBD.menuInjected = false -- guard: inject the settings UI only once
@@ -39,13 +41,17 @@ FBD.visualStatsLogged = false
 
 -- Display colours [r, g, b] (0-1 range)
 FBD.COLORS = {
-    OWNED   = { 0.00, 0.90, 1.00 },  -- cyan
+    OWNED   = { 0.10, 0.95, 0.10 },  -- green
     UNOWNED = { 1.00, 1.00, 1.00 },  -- white
     FOREIGN = { 1.00, 0.10, 0.15 },  -- red
 }
 
-FBD.BORDER_Y_OFFSET = 0.8  -- lift borders above short crops/grass
-FBD.BORDER_POINT_SIZE = 2.00 -- world-space size for spherical point markers
+FBD.BORDER_BASE_Y_OFFSET = 0.8
+FBD.BORDER_BASE_POINT_SIZE = 0.10
+FBD.BORDER_POINT_MULTIPLIER = 40
+FBD.PERCENT_MIN = 10
+FBD.PERCENT_MAX = 200
+FBD.PERCENT_STEP = 10
 
 -- =============================================================================
 -- addModEventListener callbacks
@@ -149,6 +155,57 @@ function FBD:deleteMap()
     end
 
     FBD.writeSettings()
+end
+
+function FBD:_deleteVisualNodes()
+    for _, visual in pairs(self.visuals) do
+        if visual.rootNode ~= nil and visual.rootNode ~= 0 then
+            delete(visual.rootNode)
+        end
+    end
+    self.visuals = {}
+    self.visualStatsLogged = false
+end
+
+function FBD:_sanitizePercent(v)
+    local minV = FBD.PERCENT_MIN
+    local maxV = FBD.PERCENT_MAX
+    local step = FBD.PERCENT_STEP
+    if v == nil then return minV end
+    local n = math.floor((v + step * 0.5) / step) * step
+    if n < minV then n = minV end
+    if n > maxV then n = maxV end
+    return n
+end
+
+function FBD:_getPercentValues()
+    local values = {}
+    for p = FBD.PERCENT_MIN, FBD.PERCENT_MAX, FBD.PERCENT_STEP do
+        values[#values + 1] = p
+    end
+    return values
+end
+
+function FBD:_getPercentState(percent)
+    local values = self:_getPercentValues()
+    local p = self:_sanitizePercent(percent)
+    for i, v in ipairs(values) do
+        if v == p then return i end
+    end
+    return 1
+end
+
+function FBD:_getPercentFromState(state)
+    local values = self:_getPercentValues()
+    local i = math.max(1, math.min(state or 1, #values))
+    return values[i]
+end
+
+function FBD:_applyVisualSettingsChange(needsCacheRebuild)
+    if needsCacheRebuild then
+        self.cacheBuilt = false
+    end
+    self:_deleteVisualNodes()
 end
 
 --- Called every render frame during normal gameplay (not during full-screen GUIs).
@@ -258,6 +315,8 @@ function FBD:_ensureMeshRoot()
 end
 
 function FBD:_clearVisuals()
+    self:_deleteVisualNodes()
+
     if self.meshRoot ~= nil and self.meshRoot ~= 0 then
         delete(self.meshRoot)
     end
@@ -267,7 +326,6 @@ function FBD:_clearVisuals()
     self.meshRoot = nil
     self.meshProtoRoot = nil
     self.meshProtoNode = nil
-    self.visuals = {}
 end
 
 function FBD:_ensureVisualsBuilt()
@@ -313,7 +371,9 @@ function FBD:_rebuildFarmlandVisual(id, entry, fid, localFarmId)
 
     local color = self:_pickColor(fid, localFarmId)
     local r, g, b = color[1], color[2], color[3]
-    local pointSize = FBD.BORDER_POINT_SIZE
+    local pointSize = FBD.BORDER_BASE_POINT_SIZE
+        * FBD.BORDER_POINT_MULTIPLIER
+        * (FBD.pointSizePercent / 100)
     local builtCount = 0
     local cloneFailures = 0
 
@@ -370,6 +430,8 @@ end
 --- Segment coordinates are fully pre-baked (including terrain Y) so that
 --- draw() is as light as possible.
 function FBD:_buildCache()
+    self:_deleteVisualNodes()
+
     self.cacheBuilt = true
     self.cache = {}
 
@@ -394,7 +456,7 @@ function FBD:_buildCache()
     local tf      = tsz / mapW          -- metres per pixel
     local hW      = mapW * 0.5
     local hH      = mapH * 0.5
-    local yOff    = FBD.BORDER_Y_OFFSET
+    local yOff    = FBD.BORDER_BASE_Y_OFFSET * (FBD.heightPercent / 100)
 
     -- Pre-bake one segment into the cache for a valid farmland ID.
     local function addSeg(id, wx1, wz1, wx2, wz2)
@@ -511,6 +573,8 @@ function FBD.readSettings()
         local v = getXMLBool(xmlFile, b .. ".showInBuildMenu#v") ; if v ~= nil then FBD.showInBuildMenu = v end
         local w = getXMLBool(xmlFile, b .. ".showInGame#v")      ; if w ~= nil then FBD.showInGame      = w end
         local x = getXMLBool(xmlFile, b .. ".showOnlyOwned#v")   ; if x ~= nil then FBD.showOnlyOwned   = x end
+        local p = getXMLInt(xmlFile,  b .. ".pointSizePercent#v") ; if p ~= nil then FBD.pointSizePercent = FBD:_sanitizePercent(p) end
+        local h = getXMLInt(xmlFile,  b .. ".heightPercent#v")    ; if h ~= nil then FBD.heightPercent    = FBD:_sanitizePercent(h) end
         delete(xmlFile)
     end
 end
@@ -523,6 +587,8 @@ function FBD.writeSettings()
         setXMLBool(xmlFile, b .. ".showInBuildMenu#v", FBD.showInBuildMenu)
         setXMLBool(xmlFile, b .. ".showInGame#v",      FBD.showInGame)
         setXMLBool(xmlFile, b .. ".showOnlyOwned#v",   FBD.showOnlyOwned)
+        setXMLInt(xmlFile,  b .. ".pointSizePercent#v", FBD.pointSizePercent)
+        setXMLInt(xmlFile,  b .. ".heightPercent#v",    FBD.heightPercent)
         saveXMLFile(xmlFile)
         delete(xmlFile)
     end
@@ -541,6 +607,12 @@ function FBD_Controls:onOptionChanged(state, menuOption)
     if     id == "fbd_buildMenu"   then FBD.showInBuildMenu = val
     elseif id == "fbd_inGame"      then FBD.showInGame      = val
     elseif id == "fbd_onlyOwned"   then FBD.showOnlyOwned   = val
+    elseif id == "fbd_pointSizePct" then
+        FBD.pointSizePercent = FBD:_getPercentFromState(state)
+        FBD:_applyVisualSettingsChange(false)
+    elseif id == "fbd_heightPct" then
+        FBD.heightPercent = FBD:_getPercentFromState(state)
+        FBD:_applyVisualSettingsChange(true)
     end
     FBD.writeSettings()
 end
@@ -586,6 +658,30 @@ function FBD.injectMenu()
         table.insert(page.controlsList, box)
     end
 
+    local function addPercent(id, label, tooltip, getValue)
+        local box    = templateBox:clone(page.generalSettingsLayout)
+        box.id       = id .. "_box"
+        local opt    = box.elements[1]
+        opt.id       = id
+        opt.target   = FBD_Controls
+        opt:setCallback("onClickCallback", "onOptionChanged")
+        opt:setDisabled(false)
+
+        local values = FBD:_getPercentValues()
+        local texts = {}
+        for _, v in ipairs(values) do
+            texts[#texts + 1] = string.format("%d%%", v)
+        end
+        opt:setTexts(texts)
+        opt:setState(FBD:_getPercentState(getValue()))
+
+        if opt.elements[1]  ~= nil then opt.elements[1]:setText(tooltip) end
+        if box.elements[2]  ~= nil then box.elements[2]:setText(label)   end
+        FBD.CONTROLS[id] = opt
+        updateFocusIds(box)
+        table.insert(page.controlsList, box)
+    end
+
     -- Section header
     local header = nil
     for _, elem in ipairs(page.generalSettingsLayout.elements) do
@@ -610,6 +706,12 @@ function FBD.injectMenu()
     addBinary("fbd_onlyOwned", "Show only owned",
         "Hide unowned and foreign farmlands",
         function() return FBD.showOnlyOwned end)
+    addPercent("fbd_pointSizePct", "Point size (%)",
+        "Marker size relative to default x40",
+        function() return FBD.pointSizePercent end)
+    addPercent("fbd_heightPct", "Height offset (%)",
+        "Vertical offset above terrain/crops",
+        function() return FBD.heightPercent end)
 
     page.generalSettingsLayout:invalidateLayout()
 
@@ -620,6 +722,8 @@ function FBD.injectMenu()
             if FBD.CONTROLS.fbd_buildMenu  ~= nil then FBD.CONTROLS.fbd_buildMenu:setState( FBD.showInBuildMenu and 2 or 1) end
             if FBD.CONTROLS.fbd_inGame     ~= nil then FBD.CONTROLS.fbd_inGame:setState(    FBD.showInGame      and 2 or 1) end
             if FBD.CONTROLS.fbd_onlyOwned  ~= nil then FBD.CONTROLS.fbd_onlyOwned:setState( FBD.showOnlyOwned   and 2 or 1) end
+            if FBD.CONTROLS.fbd_pointSizePct ~= nil then FBD.CONTROLS.fbd_pointSizePct:setState(FBD:_getPercentState(FBD.pointSizePercent)) end
+            if FBD.CONTROLS.fbd_heightPct    ~= nil then FBD.CONTROLS.fbd_heightPct:setState(FBD:_getPercentState(FBD.heightPercent)) end
         end)
 
     -- Allow keyboard / controller navigation through our controls.
